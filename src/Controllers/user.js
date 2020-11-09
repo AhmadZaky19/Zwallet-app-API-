@@ -1,5 +1,5 @@
 const userModel = require("../Models/user");
-const formRespone = require("../Helpers/Forms/formRespone");
+const formRespone = require("../Helpers/Forms/formResponse");
 
 const userController = {
   editUser: (req, res) => {
