@@ -1,8 +1,13 @@
 const express = require("express");
-const router = express.Router();
 
 const authRouter = require("./auth");
+const userRouter = require("./user");
+const transactionRouter = require("./transaction");
 
-router.use("/", authRouter);
+const indexRouter = express.Router();
 
-module.exports = router;
+indexRouter.use("/auth", authRouter);
+indexRouter.use("/user", userRouter);
+indexRouter.use("/transaction", transactionRouter);
+
+module.exports = indexRouter;

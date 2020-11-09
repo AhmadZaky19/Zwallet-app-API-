@@ -1,65 +1,136 @@
+const db = require("../Configs/dbMySql");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
-const db = require("../Configs/dbMySql");
-
 const authModel = {
-  register: (body) => {
+  registerUser: (body) => {
     return new Promise((resolve, reject) => {
-      const checkUsername = "SELECT username FROM users WHERE username = ?";
-      db.query(checkUsername, [body.username], (err, data) => {
+      const querySelect = "SELECT email FROM tb_user WHERE email = ?";
+      db.query(querySelect, [body.email], (err, data) => {
         if (data.length) {
-          reject({ msg: "Username Already Exist" });
+          reject({
+            msg: "This email is already registered",
+          });
         } else {
-          bcrypt.genSalt(10, (err, salt) => {
+          const saltRounds = 10;
+          bcrypt.genSalt(saltRounds, (err, salt) => {
             if (err) {
               reject(err);
             }
-            const { password } = body;
+            const { email, username, password, pin } = body;
             bcrypt.hash(password, salt, (err, hashedPassword) => {
               if (err) {
                 reject(err);
               }
               const newBody = { ...body, password: hashedPassword };
-              const qs = "INSERT INTO users SET ?";
-              db.query(qs, newBody, (err, data) => {
-                if (!err) {
-                  resolve(data);
-                } else {
-                  reject(err);
+              const queryString =
+                "INSERT INTO tb_user SET ?;INSERT INTO tb_user_detail SET user_id=LAST_INSERT_ID(), first_name = ? ;INSERT INTO tb_balance SET user_id=LAST_INSERT_ID()";
+              db.query(
+                queryString,
+                [newBody, body.username],
+                (err, dataInsert) => {
+                  if (err) {
+                    reject(err);
+                  } else {
+                    const payload = {
+                      username,
+                      email,
+                    };
+                    const token = jwt.sign(
+                      payload,
+                      process.env.SECRET_KEY
+                      // { expiresIn: "6h" },
+                    );
+                    const msg = "Successfully registered";
+                    const id = dataInsert[0].insertId;
+                    resolve({ msg, username, email, token, id });
+                  }
                 }
-              });
+              );
             });
           });
         }
       });
     });
   },
-  login: (body) => {
+  loginUser: (body) => {
     return new Promise((resolve, reject) => {
-      const qs = "SELECT email, password, FROM users WHERE email=?";
-      db.query(qs, body.email, (err, data) => {
+      const queryString =
+        "SELECT *, tb_balance.balance, tb_user_detail.first_name, tb_user_detail.last_name, tb_user_detail.phone, tb_user_detail.photo FROM tb_user JOIN tb_balance ON tb_user.user_id = tb_balance.user_id JOIN tb_user_detail ON tb_user.user_id = tb_user_detail.user_id WHERE email=?;";
+      db.query(queryString, body.email, (err, data) => {
+        if (err) {
+          reject(err);
+        }
+        if (data.length) {
+          bcrypt.compare(body.password, data[0].password, (err, result) => {
+            if (result) {
+              const { email } = body;
+              const {
+                user_id,
+                username,
+                balance,
+                first_name,
+                last_name,
+                phone,
+                photo,
+                pin,
+              } = data[0];
+              const payload = {
+                email,
+                // username,
+              };
+              const token = jwt.sign(payload, process.env.SECRET_KEY, {
+                expiresIn: "2h",
+              });
+              const msg = "Login Successfull";
+              resolve({
+                msg,
+                user_id,
+                email,
+                username,
+                balance,
+                first_name,
+                last_name,
+                phone,
+                photo,
+                token,
+                pin,
+              });
+            }
+            if (!result) {
+              reject({ msg: "Email or Password is Wrong!" });
+            }
+            if (err) {
+              reject(err);
+            }
+          });
+        } else {
+          reject({ msg: "Email or Password is Wrong!" });
+        }
+      });
+    });
+  },
+  updatePin: (id, body) => {
+    return new Promise((resolve, reject) => {
+      const queryUpdate = `UPDATE tb_user SET ? WHERE user_id ='${id}'`;
+      db.query(queryUpdate, body, (err, data) => {
+        if (!err) {
+          resolve(data);
+        } else {
+          reject(err);
+        }
+      });
+    });
+  },
+  selectEmail: (body) => {
+    return new Promise((resolve, reject) => {
+      const querySelect = `SELECT user_id, email FROM tb_user WHERE email = ?`;
+      db.query(querySelect, [body.email], (err, data) => {
         if (!err) {
           if (data.length) {
-            bcrypt.compare(body.password, data[0].password, (error, result) => {
-              if (!result) {
-                reject({ msg: "Wrong Password" });
-              } else if (result === true) {
-                const { name, email } = body;
-                const payload = {
-                  name,
-                  email,
-                };
-                const token = jwt.sign(payload, process.env.SECRET_KEY);
-                const msg = "Login Success";
-                resolve({ msg, token });
-              } else {
-                reject(error);
-              }
-            });
+            resolve(data[0]);
           } else {
-            const msg = "Wrong Username";
-            reject({ msg, err });
+            reject({ msg: "email not found..!" });
           }
         } else {
           reject(err);
@@ -67,27 +138,86 @@ const authModel = {
       });
     });
   },
-  createPin: (id, body) => {
+  changePassword: (id, body) => {
     return new Promise((resolve, reject) => {
-      bcrypt.genSalt(10, (err, salt) => {
-        if (err) {
-          reject(err);
-        }
-        const { pin } = body;
-        bcrypt.hash(pin, salt, (err, hashedPin) => {
+      if (body.password !== undefined) {
+        const querySelect = `SELECT password FROM tb_user WHERE user_id = '${id}';`;
+        db.query(querySelect, [id], (err, result) => {
+          if (err) {
+            reject({ msg: `error select password: ${err}` });
+          }
+          bcrypt.compare(
+            body.password,
+            result[0].password,
+            (err, passwordValid) => {
+              if (err) {
+                reject({ msg: `error compare password: ${err}` });
+              }
+              if (passwordValid) {
+                const saltRounds = 10;
+                bcrypt.genSalt(saltRounds, (err, salt) => {
+                  if (err) {
+                    reject(err);
+                  }
+                  bcrypt.hash(body.newPassword, salt, (err, hashedPassword) => {
+                    if (err) {
+                      reject(err);
+                    }
+                    const queryUpdatePassword = `UPDATE tb_user SET ? WHERE user_id = '${id}';`;
+                    const newBody = { password: hashedPassword };
+                    db.query(queryUpdatePassword, [newBody], (err, res) => {
+                      if (err) {
+                        reject({ msg: `error update password: ${err}` });
+                      }
+                      resolve({ msg: "Password successful changed" });
+                    });
+                  });
+                });
+              } else {
+                reject({ msg: "Current Password is Wrong..!" });
+              }
+            }
+          );
+        });
+      } else {
+        const saltRounds = 10;
+        bcrypt.genSalt(saltRounds, (err, salt) => {
           if (err) {
             reject(err);
           }
-          const newBody = { ...body, pin: hashedPin };
-          const qs = `INSERT INTO users SET ? WHERE users.id= ${id}`;
-          db.query(qs, newBody, (err, data) => {
-            if (!err) {
-              resolve(data);
-            } else {
+          bcrypt.hash(body.newPassword, salt, (err, hashedPassword) => {
+            if (err) {
               reject(err);
             }
+            const queryUpdatePassword = `UPDATE tb_user SET ? WHERE user_id = '${id}';`;
+            const newBody = { password: hashedPassword };
+            db.query(queryUpdatePassword, [newBody], (err, res) => {
+              if (err) {
+                reject({ msg: `error reset password: ${err}` });
+              }
+              resolve({ msg: "Password successfully reset" });
+            });
           });
         });
+      }
+    });
+  },
+  sendOtpEmail: (body) => {
+    const querySelect = "SELECT user_id, email FROM tb_user WHERE email=?";
+    return new Promise((resolve, reject) => {
+      db.query(querySelect, [body.email], (err, resData) => {
+        if (err) {
+          reject(err);
+        }
+        if (resData.length) {
+          let otp = parseInt(Math.random() * 10000);
+          if (otp.length < 4) {
+            let newOtp = otp + 1000;
+            resolve({ email: resData[0].email, otp: newOtp });
+          } else {
+            resolve({ email: resData[0].email, otp: otp });
+          }
+        }
       });
     });
   },

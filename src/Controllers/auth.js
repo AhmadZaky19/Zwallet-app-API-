@@ -1,38 +1,97 @@
 const authModel = require("../Models/auth");
-const formResponse = require("../Helpers/Forms/formResponse");
+const formRespone = require("../Helpers/Forms/formResponse");
+const nodemailer = require("nodemailer");
 
 const authController = {
   register: (req, res) => {
     authModel
-      .register(req.body)
+      .registerUser(req.body)
       .then((data) => {
-        const responseData = {
-          msg: "Register Succses",
-        };
-        formResponse.success(res, responseData);
+        formRespone.success(res, data);
       })
-      .catch((error) => {
-        formResponse.error(res, error);
+      .catch((err) => {
+        formRespone.error(res, err);
       });
   },
   login: (req, res) => {
     authModel
-      .login(req.body)
+      .loginUser(req.body)
       .then((data) => {
-        formResponse.success(res, data);
+        formRespone.success(res, data);
       })
       .catch((err) => {
-        formResponse.error(res, err);
+        formRespone.error(res, err);
       });
   },
-  createPin: (req, res) => {
+  updatePin: (req, res) => {
     authModel
-      .createPin(req.params.id, req.body)
+      .updatePin(req.params.id, req.body)
       .then((data) => {
-        formResponse.success(res, data);
+        const responeObj = {
+          msg: "Successfully updated",
+          ...req.body,
+        };
+        formRespone.success(res, responeObj);
       })
       .catch((err) => {
-        formResponse.error(res, err);
+        formRespone.error(res, err);
+      });
+  },
+  changePassword: (req, res) => {
+    authModel
+      .changePassword(req.params.id, req.body)
+      .then((data) => {
+        const responeObj = {
+          msg: "Successfully updated",
+          // ...req.body,
+        };
+        formRespone.success(res, responeObj);
+      })
+      .catch((err) => {
+        formRespone.error(res, err);
+      });
+  },
+  selectEmail: (req, res) => {
+    authModel
+      .selectEmail(req.body)
+      .then((data) => {
+        formRespone.success(res, data);
+      })
+      .catch((err) => {
+        formRespone.error(res, err);
+      });
+  },
+  sendOtpEmail: (req, res) => {
+    authModel
+      .sendOtpEmail(req.body)
+      .then((data) => {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: process.env.EMAIL,
+            pass: process.env.EMAIL_PASS,
+          },
+        });
+
+        console.log(`email: ${data.email}, otp: ${data.otp}`);
+        const mailOptions = {
+          from: process.env.EMAIL,
+          to: data.email,
+          subject: "Reset Password",
+          text: `Please do not tell your otp to everyone, your otp is ${data.otp}`,
+        };
+
+        transporter.sendMail(mailOptions, (err, info) => {
+          if (err) {
+            console.log(err);
+          } else {
+            console.log(`Email sent: ${info.response}`);
+          }
+        });
+        formRespone.success(res, data);
+      })
+      .catch((err) => {
+        formRespone.error(res, err);
       });
   },
 };
