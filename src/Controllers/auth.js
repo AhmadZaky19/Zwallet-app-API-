@@ -78,7 +78,7 @@ const authController = {
           from: process.env.EMAIL,
           to: data.email,
           subject: "Reset Password",
-          text: `Please do not tell your otp to everyone, your otp is ${data.otp}`,
+          text: `Do not tell your OTP to everyone, your OTP is ${data.otp}`,
         };
 
         transporter.sendMail(mailOptions, (err, info) => {
